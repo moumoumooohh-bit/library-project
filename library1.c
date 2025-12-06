@@ -3,25 +3,23 @@
  *  Recherche fonctionnelle sur mots ou titre complet
  *********************************************************/
 
-#include <stdio.h>      // Fonctions d'affichage et manipulation standard
-#include <stdlib.h>     // Fonctions utilitaires (atoi, malloc, etc.)
-#include <string.h>     // Pour strcpy, strcat, strstr, strtok
-#include <unistd.h>     // Pour close, read, write
-#include <arpa/inet.h>  // Pour socket, bind, accept, structures réseau
-#include <ctype.h>      // Pour tolower()
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <arpa/inet.h>
+#include <ctype.h>
 
-#define BUFFER_SIZE 2048    // Taille du buffer pour les messages
+#define BUFFER_SIZE 2048
 
-// ---------- STRUCTURE D’UN LIVRE ----------
 typedef struct {
-    int id;                 // ID unique du livre
-    char title[50];         // Titre
-    char author[50];        // Auteur
-    int leased;             // 1 = loué, 0 = disponible
-    int search_count;       // Nombre de fois où ce livre a été recherché
+    int id;
+    char title[50];
+    char author[50];
+    int leased;
+    int search_count;
 } Book;
 
-// ---------- LISTE DES LIVRES ----------
 Book books[] = {
     {101, "C Programming", "Dennis Ritchie", 0, 0},
     {102, "Operating Systems", "Andrew Tanenbaum", 0, 0},
@@ -29,211 +27,169 @@ Book books[] = {
     {104, "Distributed Systems", "George Coulouris", 0, 0}
 };
 
-int book_count = 4;         // Nombre total de livres
-int total_searches = 0;     // Nombre global de recherches
+int book_count = 4;
+int total_searches = 0;
 
-// ---------- Convertir une chaîne en minuscules ----------
+// Convertir chaîne en minuscules
 void str_tolower(char *s) {
-    for (int i = 0; s[i]; i++)      // Parcours chaque caractère
-        s[i] = tolower(s[i]);       // Conversion en minuscule
+    for (int i = 0; s[i]; i++)
+        s[i] = tolower(s[i]);
 }
 
-// ---------- RECHERCHE PAR MOTS OU TITRE COMPLET ----------
+// Rechercher un mot-clé (par mot ou titre complet)
 void handle_search(char *keyword, char *response) {
+    strcpy(response, "");
+    total_searches++;
 
-    strcpy(response, "");           // Initialiser la réponse vide
-    total_searches++;               // Incrémenter le compteur global
-
-    while (*keyword == ' ') keyword++;     // Retirer espaces au début
-    keyword[strcspn(keyword, "\n")] = '\0'; // Supprimer le \n final
+    while (*keyword == ' ') keyword++; // enlever espaces début
+    keyword[strcspn(keyword, "\n")] = '\0'; // enlever saut ligne
 
     char key_lower[100];
-    strcpy(key_lower, keyword);      // Copier la clé
-    str_tolower(key_lower);          // La mettre en minuscule
+    strcpy(key_lower, keyword);
+    str_tolower(key_lower);
 
     for (int i = 0; i < book_count; i++) {
+        char title_lower[100], author_lower[100];
+        strcpy(title_lower, books[i].title);
+        strcpy(author_lower, books[i].author);
+        str_tolower(title_lower);
+        str_tolower(author_lower);
 
-        char title_lower[100];
-        char author_lower[100];
+        int found = 0;
 
-        strcpy(title_lower, books[i].title);   // Copier titre
-        strcpy(author_lower, books[i].author); // Copier auteur
-
-        str_tolower(title_lower);              // Minuscule titre
-        str_tolower(author_lower);             // Minuscule auteur
-
-        int found = 0;                         // Livre trouvé ? 0 = non
-
+        // Recherche par mot (séparer keyword en mots)
         char key_copy[100];
-        strcpy(key_copy, key_lower);           // Copie du mot-clé
-
-        char *token = strtok(key_copy, " ");   // Découper par mots
-
+        strcpy(key_copy, key_lower);
+        char *token = strtok(key_copy, " ");
         while (token != NULL) {
-
-            if (strstr(title_lower, token)     // Si mot dans titre
-             || strstr(author_lower, token)) { // Ou dans auteur
-
+            if (strstr(title_lower, token) || strstr(author_lower, token)) {
                 found = 1;
                 break;
             }
-
-            token = strtok(NULL, " ");         // Mot suivant
+            token = strtok(NULL, " ");
         }
 
-        if (found) {                            // Si livre trouvé
-
-            books[i].search_count++;           // +1 recherche pour ce livre
-
+        if (found) {
+            books[i].search_count++;
             char line[200];
-            sprintf(line,                       // Construire la ligne
+            sprintf(line,
                 "ID: %d | %s | %s | %s\n",
                 books[i].id,
                 books[i].title,
                 books[i].author,
                 books[i].leased ? "LOUE" : "DISPONIBLE"
             );
-
-            strcat(response, line);             // Ajouter à la réponse
+            strcat(response, line);
         }
     }
 }
 
-// ---------- LOUER UN LIVRE ----------
+// Louer un livre
 void handle_lease(int id, char *response) {
-
     for (int i = 0; i < book_count; i++) {
-
-        if (books[i].id == id) {               // Livre trouvé
-
-            if (books[i].leased)               // Si déjà loué
+        if (books[i].id == id) {
+            if (books[i].leased)
                 sprintf(response, "Livre %d déjà loué.\n", id);
-
             else {
-                books[i].leased = 1;           // Louer le livre
+                books[i].leased = 1;
                 sprintf(response, "Livre %d loué avec succès.\n", id);
             }
             return;
         }
     }
-
-    strcpy(response, "NOT_FOUND");             // Livre introuvable
+    strcpy(response, "NOT_FOUND");
 }
 
-// ---------- RETOURNER UN LIVRE ----------
+// Retourner un livre
 void handle_return(int id, char *response) {
-
     for (int i = 0; i < book_count; i++) {
-
-        if (books[i].id == id) {               // Livre trouvé
-
-            if (!books[i].leased)              // Déjà disponible ?
+        if (books[i].id == id) {
+            if (!books[i].leased)
                 sprintf(response, "Livre %d n'est pas loué.\n", id);
-
             else {
-                books[i].leased = 0;           // Rendre disponible
+                books[i].leased = 0;
                 sprintf(response, "Livre %d retourné avec succès.\n", id);
             }
             return;
         }
     }
-
     strcpy(response, "NOT_FOUND");
 }
 
-// ---------- LISTER LES LIVRES ----------
+// Lister tous les livres
 void handle_list(char *response) {
-
-    strcpy(response, "");                      // Réponse vide
-
+    strcpy(response, "");
     for (int i = 0; i < book_count; i++) {
-
         char line[200];
-
-        sprintf(line,                           // Construire ligne
+        sprintf(line,
             "ID: %d | %s | %s | %s\n",
             books[i].id,
             books[i].title,
             books[i].author,
             books[i].leased ? "LOUE" : "DISPONIBLE"
         );
-
-        strcat(response, line);                 // Ajouter ligne
+        strcat(response, line);
     }
 }
 
-// ---------- STATISTIQUES ----------
+// Statistiques locales
 void handle_stats(char *response) {
-
-    int max_index = 0;                         // Index du livre le plus recherché
-
+    int max_index = 0;
     for (int i = 1; i < book_count; i++) {
-
         if (books[i].search_count > books[max_index].search_count)
-            max_index = i;                     // Mettre à jour
+            max_index = i;
     }
 
-    sprintf(response,                          // Créer le message
+    sprintf(response,
         "\n=== STATISTIQUES LIBRARY SERVER 1 ===\n"
         "Recherches totales : %d\n"
         "Livre le plus recherché : %s (%d recherches)\n\n",
         total_searches,
-        books[max_index].title,
-        books[max_index].search_count
+        books[max_index].title,books[max_index].search_count
     );
 }
 
-// ---------- MAIN : SERVEUR ----------
+// MAIN
 int main() {
+    int sockfd, clientfd;
+    struct sockaddr_in serv, client;
+    char buffer[BUFFER_SIZE];
+    char response[BUFFER_SIZE];
 
-    int sockfd, clientfd;                    // Sockets serveur et client
-    struct sockaddr_in serv, client;         // Structures d’adresses
-    char buffer[BUFFER_SIZE];                // Buffer de réception
-    char response[BUFFER_SIZE];              // Buffer de réponse
+    sockfd = socket(AF_INET, SOCK_STREAM, 0);
+    serv.sin_family = AF_INET;
+    serv.sin_port = htons(6001);
+    serv.sin_addr.s_addr = INADDR_ANY;
 
-    sockfd = socket(AF_INET, SOCK_STREAM, 0);  // Création socket TCP
-
-    serv.sin_family = AF_INET;               // IPv4
-    serv.sin_port = htons(6001);             // Port du serveur
-    serv.sin_addr.s_addr = INADDR_ANY;       // Accepter toutes IP
-
-    bind(sockfd, (struct sockaddr *)&serv, sizeof(serv));   // Associer socket
-
-    listen(sockfd, 5);                       // Écouter 5 connexions max
+    bind(sockfd, (struct sockaddr *)&serv, sizeof(serv));
+    listen(sockfd, 5);
 
     printf("Library Server 1 running on port 6001...\n");
 
     socklen_t client_len = sizeof(client);
 
-    while (1) {                               // Boucle infinie serveur
-
+    while (1) {
         clientfd = accept(sockfd, (struct sockaddr *)&client, &client_len);
 
-        int len = recv(clientfd, buffer, BUFFER_SIZE, 0);  // Lire requête
-
-        buffer[len] = '\0';                   // Terminer chaîne
-        printf("[Coordinator] %s\n", buffer); // Afficher requête
+        int len = recv(clientfd, buffer, BUFFER_SIZE, 0);
+        buffer[len] = '\0';
+        printf("[Coordinator] %s\n", buffer);
 
         if (strncmp(buffer, "search", 6) == 0)
             handle_search(buffer + 7, response);
-
         else if (strncmp(buffer, "lease", 5) == 0)
             handle_lease(atoi(buffer + 6), response);
-
         else if (strncmp(buffer, "return", 6) == 0)
             handle_return(atoi(buffer + 7), response);
-
         else if (strncmp(buffer, "list", 4) == 0)
             handle_list(response);
-
         else if (strncmp(buffer, "stats", 5) == 0)
             handle_stats(response);
 
-        send(clientfd, response, strlen(response), 0);   // Envoyer réponse
-
-        close(clientfd);                                 // Fermer client
+        send(clientfd, response, strlen(response), 0);
+        close(clientfd);
     }
 
-    close(sockfd);                                       // Fermer serveur
+    close(sockfd);
     return 0;
 }
